@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2025 Anthon Open Source Community
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 int *__errno_location(int *in_errnop, int *out_errnop);
 // __errno_location_prologue function is for reference only, actual prologue
 // code will need to be edited manually

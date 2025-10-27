@@ -1,5 +1,9 @@
 #!/bin/bash -ex
 
+# SPDX-FileCopyrightText: Copyright 2025 Anthon Open Source Community
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+
 [[ -z "$LOONGARCH_CC" ]] && {
     echo "LOONGARCH_CC is not set. Please run CMake to configure the build first."
     exit 1
@@ -33,5 +37,5 @@ sed -i "s|0/\*LD_OFFS\*/|$OFFSET_INT|g" "${ASM_FILE}"
 
 ${LOONGARCH_CC} "${ASM_FILE}" -c -o shims-new.o
 llvm-objcopy -O binary --only-section=.text.__errno_location shims-new.o - \
-    | xxd -i -n errno_conversion \
-    | sed 's|unsigned |static constexpr unsigned |g' > "$BINARY_DIR"/errno_conversion_code.hpp
+| xxd -i -n errno_conversion \
+| sed 's|unsigned |static constexpr unsigned |g' > "$BINARY_DIR"/errno_conversion_code.hpp
