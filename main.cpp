@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <elf.h>
 #include <fcntl.h>
 #include <filesystem>
 #include <functional>
@@ -807,6 +808,15 @@ int main(int argc, char *argv[]) {
       perror("Error opening input ELF");
     else
       fprintf(stderr, "Error opening input ELF: %s\n", elf_errmsg(-1));
+    return 1;
+  }
+  GElf_Ehdr ehdr{};
+  if (gelf_getehdr(elf, &ehdr) == nullptr) {
+    fprintf(stderr, "Error reading ELF header: %s\n", elf_errmsg(-1));
+    return 1;
+  }
+  if (ehdr.e_machine != EM_LOONGARCH) {
+    fprintf(stderr, "Input ELF is not for LoongArch architecture\n");
     return 1;
   }
   const GElf_ShdrMap section_headers = get_section_headers(elf);
