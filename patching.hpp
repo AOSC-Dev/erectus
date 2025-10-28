@@ -210,18 +210,6 @@ get_function_patch_stub(const std::string_view &func_name,
                         uint64_t &patch_start_pc,
                         const LoongPLTEntryData &old_plt_data) {
   patch_start_pc = (patch_start_pc + 4) & ~0x3ULL;
-  if (func_name == "__errno_location") {
-    const auto code_array =
-        build_errno_conversion_call_prologue(patch_start_pc, old_plt_data);
-    constexpr const size_t code_size =
-        code_array.size() * sizeof(uint32_t) + sizeof(errno_conversion);
-    uint8_t *result = new uint8_t[code_size];
-    __builtin_memcpy(result, code_array.data(),
-                     code_array.size() * sizeof(uint32_t));
-    __builtin_memcpy(result + code_array.size() * sizeof(uint32_t),
-                     errno_conversion, sizeof(errno_conversion));
-    return {reinterpret_cast<const uint32_t *>(result), code_size, true};
-  }
   const auto stub_info = get_stat_stub(func_name);
   if (stub_info.size > 0) {
     const auto jump_back_code = build_jump_back_to_plt(
