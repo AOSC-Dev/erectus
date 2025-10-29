@@ -91,11 +91,6 @@ static constexpr auto stub_s1a5 = build_stat_shifting_stubs<1, 5, 0, false>();
 static constexpr auto stub_s1a4p = build_stat_shifting_stubs<1, 4, 0, true>();
 static constexpr auto stub_s1a5p = build_stat_shifting_stubs<1, 5, 0, true>();
 
-// generated code (see shims-new.S)
-#include "errno_conversion_code.hpp"
-// end of generated code
-static_assert(sizeof(errno_conversion) == errno_conversion_len);
-
 struct StubInfo {
   const uint32_t *code;
   size_t size;
@@ -162,47 +157,6 @@ build_jump_back_to_plt(const uint64_t jump_out_pc,
       static_cast<unsigned int>(0x4C000000 | old_plt_data.jump_reg << 5 |
                                 jirl_rd)};
   return result;
-}
-
-constexpr static std::array<uint32_t, 7 + 5>
-build_errno_conversion_call_prologue(const uint64_t prologue_start_pc,
-                                     const LoongPLTEntryData &old_plt_data) {
-  // prototype for our shim function: void __errno_location(int *in_errnop, int
-  // *out_errnop)
-  // generate:
-  // addi.d $sp, $sp, -16
-  // st.d   $ra, $sp, 8
-  // st.d   $fp, $sp, 0
-  // ... build_jump_back_to_plt(jump_out_pc, old_plt_data);
-  // ld.d   $fp, $sp, 0
-  // ld.d   $ra, $sp, 8
-  // addi.d $sp, $sp, 16
-  // addi.d $a1, $sp, -128 # this is where the hack happens: stack is
-  // thread-safe, we can store errno conversion results here (on the edge of the
-  // red-zone)
-  const std::array<uint32_t, 5> jump_back_to_plt_result =
-      build_jump_back_to_plt(prologue_start_pc + 8, old_plt_data, true);
-  return {
-      // addi.d $sp, $sp, -16
-      0x02FFC063,
-      // st.d   $ra, $sp, 8
-      0x29C02061,
-      // st.d   $fp, $sp, 0
-      0x29C00076,
-      jump_back_to_plt_result[0],
-      jump_back_to_plt_result[1],
-      jump_back_to_plt_result[2],
-      jump_back_to_plt_result[3],
-      jump_back_to_plt_result[4],
-      // ld.d   $fp, $sp, 0
-      0x28C00076,
-      // ld.d   $ra, $sp, 8
-      0x28C02061,
-      // addi.d $sp, $sp, 16
-      0x02C04063,
-      // addi.d $a1, $sp, -128
-      0x02FE0065,
-  };
 }
 
 static const StubInfo
