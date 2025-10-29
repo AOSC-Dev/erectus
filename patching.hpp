@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string_view>
 
 struct LoongPLTEntryData {
@@ -16,6 +17,8 @@ struct LoongPLTEntryData {
 };
 
 constexpr static uint32_t get_break_instruction(const uint16_t code) {
+  if (code == 0xFFFF)
+    return 0x3860018C; // amswap.w $t0, $zero, $t0 (illegal instruction)
   return 0x2A0000 | (code & 0x7FFF);
 }
 
@@ -157,6 +160,37 @@ build_jump_back_to_plt(const uint64_t jump_out_pc,
       static_cast<unsigned int>(0x4C000000 | old_plt_data.jump_reg << 5 |
                                 jirl_rd)};
   return result;
+}
+
+static size_t const find_string_offset(const uint8_t *data, size_t data_size,
+                                       const char *str) {
+  size_t str_len = __builtin_strlen(str);
+  // search for the string in the data (including null terminator)
+  const void *pos = memmem(data, data_size, str, str_len + 1);
+  if (pos != nullptr) {
+    return reinterpret_cast<const uint8_t *>(pos) - data;
+  }
+  return static_cast<size_t>(-1);
+}
+
+template <typename T>
+static void find_and_replace_integer(uint8_t *data, size_t data_size,
+                                     const T old_value, T new_value) {
+  const size_t v_size = sizeof(T);
+  void *result = nullptr;
+  while ((result = memmem(data, data_size, &old_value, v_size)) != nullptr) {
+    const size_t offset = reinterpret_cast<uint8_t *>(result) - data;
+    if (offset & (v_size - 1)) {
+      // not aligned, skip
+      data += offset + 1;
+      data_size -= offset + 1;
+      continue;
+    }
+    // replace the integer
+    __builtin_memcpy(result, &new_value, v_size);
+    data += offset + v_size;
+    data_size -= offset + v_size;
+  }
 }
 
 static const StubInfo

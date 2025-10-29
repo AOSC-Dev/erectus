@@ -360,8 +360,9 @@ static ModificationRecord<uint64_t> find_executable_page_gap(Elf *elf) {
       continue;
     }
     if (i + 1 >= sorted_segments.size()) {
-      // last loadable segment, we can either fit nearly infinite data or we can do
-      // nothing (e.g. section header follows this segment) depending on the ELF layout
+      // last loadable segment, we can either fit nearly infinite data or we can
+      // do nothing (e.g. section header follows this segment) depending on the
+      // ELF layout
       return {sorted_segments[i].p_offset + sorted_segments[i].p_filesz,
               UINT64_MAX};
     }
@@ -792,6 +793,48 @@ patch_known_symbols(Elf *elf, const GElf_ShdrMap &section_headers,
   return 0;
 }
 
+static int patch_ld_verneed(Elf *elf, const GElf_ShdrMap &section_headers) {
+  Elf_Data *dynstr_data =
+      elf_getdata_rawchunk(elf, section_headers.at(".dynstr").sh_offset,
+                           section_headers.at(".dynstr").sh_size, ELF_T_BYTE);
+  if (dynstr_data == nullptr) {
+    return -1;
+  }
+  const size_t old_ld_pos =
+      find_string_offset(reinterpret_cast<uint8_t *>(dynstr_data->d_buf),
+                         dynstr_data->d_size, "ld.so.1");
+  if (old_ld_pos == SIZE_MAX) {
+    // this means nothing to patch
+    return 0;
+  }
+  const size_t replacement_pos =
+      find_string_offset(reinterpret_cast<uint8_t *>(dynstr_data->d_buf),
+                         dynstr_data->d_size, "libc.so.6");
+  if (replacement_pos == SIZE_MAX) {
+    return -1;
+  }
+  Elf_Data *dyn_data =
+      elf_getdata_rawchunk(elf, section_headers.at(".dynamic").sh_offset,
+                           section_headers.at(".dynamic").sh_size, ELF_T_DYN);
+  if (dyn_data == nullptr) {
+    return -1;
+  }
+  find_and_replace_integer<uint32_t>(
+      reinterpret_cast<uint8_t *>(dyn_data->d_buf), dyn_data->d_size,
+      old_ld_pos, replacement_pos);
+  elf_flagdata(dyn_data, ELF_C_SET, ELF_F_DIRTY);
+  Elf_Data *gnu_verneed_data = elf_getdata_rawchunk(
+      elf, section_headers.at(".gnu.version_r").sh_offset,
+      section_headers.at(".gnu.version_r").sh_size, ELF_T_VNEED);
+  if (gnu_verneed_data) {
+    find_and_replace_integer<uint32_t>(
+        reinterpret_cast<uint8_t *>(gnu_verneed_data->d_buf),
+        gnu_verneed_data->d_size, old_ld_pos, replacement_pos);
+    elf_flagdata(gnu_verneed_data, ELF_C_SET, ELF_F_DIRTY);
+  }
+  return 0;
+}
+
 static inline void elf_cleanup(Elf **elf) { elf_end(*elf); }
 
 int main(int argc, char *argv[]) {
@@ -802,7 +845,8 @@ int main(int argc, char *argv[]) {
   const char *input_elf_name = argv[1];
   const char *output_elf_name = argv[2];
   __attribute__((cleanup(elf_cleanup))) Elf *elf = elf_open(input_elf_name);
-  __attribute__((cleanup(elf_cleanup))) Elf *out_elf = elf_copy_open(input_elf_name, output_elf_name);
+  __attribute__((cleanup(elf_cleanup))) Elf *out_elf =
+      elf_copy_open(input_elf_name, output_elf_name);
   if (elf == nullptr) {
     if (errno != 0)
       perror("Error opening input ELF");
@@ -846,6 +890,10 @@ int main(int argc, char *argv[]) {
   gap.used_offset = 0;
   if (patch_known_symbols(out_elf, section_headers, plt_entries, gap) != 0) {
     fprintf(stderr, "Error patching known symbols\n");
+    return 1;
+  }
+  if (patch_ld_verneed(out_elf, section_headers) != 0) {
+    fprintf(stderr, "Error patching ld.so.1 references\n");
     return 1;
   }
   // tell libelf to re-write the ELF layout
